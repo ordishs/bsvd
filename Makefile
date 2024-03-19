@@ -31,3 +31,9 @@ uninstall:
 
 docker:
 	docker build -t $(APPNAME) .
+
+.PHONY: lint
+lint: # todo enable coinbase tracker
+	golangci-lint run ./...
+	staticcheck ./...
+
