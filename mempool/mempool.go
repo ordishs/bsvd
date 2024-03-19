@@ -14,7 +14,6 @@ import (
 
 	"github.com/bitcoinsv/bsvd/blockchain"
 	"github.com/bitcoinsv/bsvd/blockchain/indexers"
-	"github.com/bitcoinsv/bsvd/btcjson"
 	"github.com/bitcoinsv/bsvd/chaincfg"
 	"github.com/bitcoinsv/bsvd/chaincfg/chainhash"
 	"github.com/bitcoinsv/bsvd/mining"
@@ -658,7 +657,6 @@ func (mp *TxPool) maybeAcceptTransaction(tx *bsvutil.Tx, isNew, rateLimit, rejec
 	bestHeight := mp.cfg.BestHeight()
 	nextBlockHeight := bestHeight + 1
 
-
 	scriptFlags := txscript.StandardVerifyFlags
 
 	// Perform preliminary sanity checks on the transaction.  This makes
@@ -1154,53 +1152,6 @@ func (mp *TxPool) MiningDescs() []*mining.TxDesc {
 	mp.mtx.RUnlock()
 
 	return descs
-}
-
-// RawMempoolVerbose returns all of the entries in the mempool as a fully
-// populated btcjson result.
-//
-// This function is safe for concurrent access.
-func (mp *TxPool) RawMempoolVerbose() map[string]*btcjson.GetRawMempoolVerboseResult {
-	mp.mtx.RLock()
-	defer mp.mtx.RUnlock()
-
-	result := make(map[string]*btcjson.GetRawMempoolVerboseResult,
-		len(mp.pool))
-	bestHeight := mp.cfg.BestHeight()
-
-	for _, desc := range mp.pool {
-		// Calculate the current priority based on the inputs to
-		// the transaction.  Use zero if one or more of the
-		// input transactions can't be found for some reason.
-		tx := desc.Tx
-		var currentPriority float64
-		utxos, err := mp.fetchInputUtxos(tx)
-		if err == nil {
-			currentPriority = mining.CalcPriority(tx.MsgTx(), utxos,
-				bestHeight+1)
-		}
-
-		mpd := &btcjson.GetRawMempoolVerboseResult{
-			Size:             int32(tx.MsgTx().SerializeSize()),
-			Fee:              bsvutil.Amount(desc.Fee).ToBSV(),
-			Time:             desc.Added.Unix(),
-			Height:           int64(desc.Height),
-			StartingPriority: desc.StartingPriority,
-			CurrentPriority:  currentPriority,
-			Depends:          make([]string, 0),
-		}
-		for _, txIn := range tx.MsgTx().TxIn {
-			hash := &txIn.PreviousOutPoint.Hash
-			if mp.haveTransaction(hash) {
-				mpd.Depends = append(mpd.Depends,
-					hash.String())
-			}
-		}
-
-		result[tx.Hash().String()] = mpd
-	}
-
-	return result
 }
 
 // LastUpdated returns the last time a transaction was added to or removed from
