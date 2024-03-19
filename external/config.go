@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/btcsuite/go-socks/socks"
 	"github.com/bitcoinsv/bsvd/chaincfg"
 	"github.com/bitcoinsv/bsvd/chaincfg/chainhash"
 	"github.com/bitcoinsv/bsvd/connmgr"
@@ -31,6 +30,7 @@ import (
 	"github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/version"
 	"github.com/bitcoinsv/bsvutil"
+	"github.com/btcsuite/go-socks/socks"
 
 	flags "github.com/jessevdk/go-flags"
 )
@@ -46,9 +46,6 @@ const (
 	defaultBanDuration             = time.Hour * 24
 	defaultBanThreshold            = 100
 	defaultConnectTimeout          = time.Second * 30
-	defaultMaxRPCClients           = 10
-	defaultMaxRPCWebsockets        = 25
-	defaultMaxRPCConcurrentReqs    = 20
 	defaultDbType                  = "ffldb"
 	defaultFreeTxRelayLimit        = 15.0
 	defaultTrickleInterval         = peer.DefaultTrickleInterval
@@ -70,13 +67,11 @@ const (
 )
 
 var (
-	defaultHomeDir     = bsvutil.AppDataDir("bsvd", false)
-	defaultConfigFile  = filepath.Join(defaultHomeDir, defaultConfigFilename)
-	defaultDataDir     = filepath.Join(defaultHomeDir, defaultDataDirname)
-	knownDbTypes       = database.SupportedDrivers()
-	defaultRPCKeyFile  = filepath.Join(defaultHomeDir, "rpc.key")
-	defaultRPCCertFile = filepath.Join(defaultHomeDir, "rpc.cert")
-	defaultLogDir      = filepath.Join(defaultHomeDir, defaultLogDirname)
+	defaultHomeDir    = bsvutil.AppDataDir("bsvd", false)
+	defaultConfigFile = filepath.Join(defaultHomeDir, defaultConfigFilename)
+	defaultDataDir    = filepath.Join(defaultHomeDir, defaultDataDirname)
+	knownDbTypes      = database.SupportedDrivers()
+	defaultLogDir     = filepath.Join(defaultHomeDir, defaultLogDirname)
 )
 
 // runServiceCommand is only set to a real function on Windows.  It is used
@@ -120,18 +115,6 @@ type config struct {
 	BanDuration             time.Duration `long:"banduration" description:"How long to ban misbehaving peers.  Valid time units are {s, m, h}.  Minimum 1 second"`
 	BanThreshold            uint32        `long:"banthreshold" description:"Maximum allowed ban score before disconnecting and banning misbehaving peers."`
 	Whitelists              []string      `long:"whitelist" description:"Add an IP network or IP that will not be banned. (eg. 192.168.1.0/24 or ::1)"`
-	RPCUser                 string        `short:"u" long:"rpcuser" description:"Username for RPC connections"`
-	RPCPass                 string        `short:"P" long:"rpcpass" default-mask:"-" description:"Password for RPC connections"`
-	RPCLimitUser            string        `long:"rpclimituser" description:"Username for limited RPC connections"`
-	RPCLimitPass            string        `long:"rpclimitpass" default-mask:"-" description:"Password for limited RPC connections"`
-	RPCListeners            []string      `long:"rpclisten" description:"Add an interface/port to listen for RPC connections (default port: 8334, testnet: 18334)"`
-	RPCCert                 string        `long:"rpccert" description:"File containing the certificate file"`
-	RPCKey                  string        `long:"rpckey" description:"File containing the certificate key"`
-	RPCMaxClients           int           `long:"rpcmaxclients" description:"Max number of RPC clients for standard connections"`
-	RPCMaxWebsockets        int           `long:"rpcmaxwebsockets" description:"Max number of RPC websocket connections"`
-	RPCMaxConcurrentReqs    int           `long:"rpcmaxconcurrentreqs" description:"Max number of concurrent RPC requests that may be processed concurrently"`
-	RPCQuirks               bool          `long:"rpcquirks" description:"Mirror some JSON-RPC quirks of Bitcoin Core -- NOTE: Discouraged unless interoperability issues need to be worked around"`
-	DisableRPC              bool          `long:"norpc" description:"Disable built-in RPC server -- NOTE: The RPC server is disabled by default if no rpcuser/rpcpass or rpclimituser/rpclimitpass is specified"`
 	DisableTLS              bool          `long:"notls" description:"Disable TLS for the RPC server -- NOTE: This is only allowed if the RPC server is bound to localhost"`
 	DisableDNSSeed          bool          `long:"nodnsseed" description:"Disable DNS seeding for peers"`
 	ExternalIPs             []string      `long:"externalip" description:"Add an ip to the list of local addresses we claim to listen on to peers"`
@@ -410,10 +393,10 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 // line options.
 //
 // The configuration proceeds as follows:
-// 	1) Start with a default config with sane settings
-// 	2) Pre-parse the command line to check for an alternative config file
-// 	3) Load configuration file overwriting defaults with any specified options
-// 	4) Parse CLI options and overwrite/add any specified options
+//  1. Start with a default config with sane settings
+//  2. Pre-parse the command line to check for an alternative config file
+//  3. Load configuration file overwriting defaults with any specified options
+//  4. Parse CLI options and overwrite/add any specified options
 //
 // The above results in bsvd functioning properly without any config settings
 // while still allowing the user to override settings with config files and
@@ -428,14 +411,9 @@ func loadConfig() (*config, []string, error) {
 		MinSyncPeerNetworkSpeed: defaultMinSyncPeerNetworkSpeed,
 		BanDuration:             defaultBanDuration,
 		BanThreshold:            defaultBanThreshold,
-		RPCMaxClients:           defaultMaxRPCClients,
-		RPCMaxWebsockets:        defaultMaxRPCWebsockets,
-		RPCMaxConcurrentReqs:    defaultMaxRPCConcurrentReqs,
 		DataDir:                 defaultDataDir,
 		LogDir:                  defaultLogDir,
 		DbType:                  defaultDbType,
-		RPCKey:                  defaultRPCKeyFile,
-		RPCCert:                 defaultRPCCertFile,
 		ExcessiveBlockSize:      defaultExcessiveBlockSize,
 		MinRelayTxFee:           mempool.DefaultMinRelayTxFee.ToBSV(),
 		FreeTxRelayLimit:        defaultFreeTxRelayLimit,
@@ -739,58 +717,6 @@ func loadConfig() (*config, []string, error) {
 		}
 	}
 
-	// Check to make sure limited and admin users don't have the same username
-	if cfg.RPCUser == cfg.RPCLimitUser && cfg.RPCUser != "" {
-		str := "%s: --rpcuser and --rpclimituser must not specify the " +
-			"same username"
-		err := fmt.Errorf(str, funcName)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
-	}
-
-	// Check to make sure limited and admin users don't have the same password
-	if cfg.RPCPass == cfg.RPCLimitPass && cfg.RPCPass != "" {
-		str := "%s: --rpcpass and --rpclimitpass must not specify the " +
-			"same password"
-		err := fmt.Errorf(str, funcName)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
-	}
-
-	// The RPC server is disabled if no username or password is provided.
-	if (cfg.RPCUser == "" || cfg.RPCPass == "") &&
-		(cfg.RPCLimitUser == "" || cfg.RPCLimitPass == "") {
-		cfg.DisableRPC = true
-	}
-
-	if cfg.DisableRPC {
-		bsvdLog.Infof("RPC service is disabled")
-	}
-
-	// Default RPC to listen on localhost only.
-	if !cfg.DisableRPC && len(cfg.RPCListeners) == 0 {
-		addrs, err := net.LookupHost("localhost")
-		if err != nil {
-			return nil, nil, err
-		}
-		cfg.RPCListeners = make([]string, 0, len(addrs))
-		for _, addr := range addrs {
-			addr = net.JoinHostPort(addr, activeNetParams.rpcPort)
-			cfg.RPCListeners = append(cfg.RPCListeners, addr)
-		}
-	}
-
-	if cfg.RPCMaxConcurrentReqs < 0 {
-		str := "%s: The rpcmaxwebsocketconcurrentrequests option may " +
-			"not be less than 0 -- parsed [%d]"
-		err := fmt.Errorf(str, funcName, cfg.RPCMaxConcurrentReqs)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
-	}
-
 	// Validate the the minrelaytxfee.
 	cfg.minRelayTxFee, err = bsvutil.NewAmount(cfg.MinRelayTxFee)
 	if err != nil {
@@ -914,41 +840,6 @@ func loadConfig() (*config, []string, error) {
 	// duplicate addresses.
 	cfg.Listeners = normalizeAddresses(cfg.Listeners,
 		activeNetParams.DefaultPort)
-
-	// Add default port to all rpc listener addresses if needed and remove
-	// duplicate addresses.
-	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners,
-		activeNetParams.rpcPort)
-
-	// Only allow TLS to be disabled if the RPC is bound to localhost
-	// addresses.
-	if !cfg.DisableRPC && cfg.DisableTLS {
-		allowedTLSListeners := map[string]struct{}{
-			"localhost": {},
-			"127.0.0.1": {},
-			"::1":       {},
-		}
-		for _, addr := range cfg.RPCListeners {
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				str := "%s: RPC listen interface '%s' is " +
-					"invalid: %v"
-				err := fmt.Errorf(str, funcName, addr, err)
-				fmt.Fprintln(os.Stderr, err)
-				fmt.Fprintln(os.Stderr, usageMessage)
-				return nil, nil, err
-			}
-			if _, ok := allowedTLSListeners[host]; !ok {
-				str := "%s: the --notls option may not be used " +
-					"when binding RPC to non localhost " +
-					"addresses: %s"
-				err := fmt.Errorf(str, funcName, addr)
-				fmt.Fprintln(os.Stderr, err)
-				fmt.Fprintln(os.Stderr, usageMessage)
-				return nil, nil, err
-			}
-		}
-	}
 
 	// Add default port to all added peer addresses if needed and remove
 	// duplicate addresses.
