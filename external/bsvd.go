@@ -2,7 +2,7 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package main
+package external
 
 import (
 	"fmt"
@@ -335,4 +335,8 @@ func main() {
 	if err := bsvdMain(nil); err != nil {
 		os.Exit(1)
 	}
+}
+
+func Start() {
+	main()
 }
