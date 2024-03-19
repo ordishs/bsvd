@@ -1,9 +1,8 @@
-module github.com/ordishs/bsvd
+module github.com/bitcoinsv/bsvd
 
 go 1.22.1
 
 require (
-	github.com/bitcoinsv/bsvd v0.0.0-20190609155523-4c29707f7173
 	github.com/bitcoinsv/bsvlog v0.0.0-20181216181007-cb81b076bf2e
 	github.com/bitcoinsv/bsvutil v0.0.0-20181216182056-1d77cf353ea9
 	github.com/btcsuite/go-socks v0.0.0-20170105172521-4720035b7bfd
