@@ -6,16 +6,12 @@ package external
 
 import (
 	"fmt"
-	"net"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"runtime/pprof"
 
-	"github.com/bitcoinsv/bsvd/blockchain/indexers"
 	"github.com/bitcoinsv/bsvd/database"
 	"github.com/bitcoinsv/bsvd/limits"
 	"github.com/bitcoinsv/bsvd/version"
@@ -69,34 +65,34 @@ func bsvdMain(serverChan chan<- *server) error {
 	bsvdLog.Infof("Version %s", version.String())
 
 	// Enable http profiling server if requested.
-	if cfg.Profile != "" {
-		go func() {
-			listenAddr := net.JoinHostPort("", cfg.Profile)
-			bsvdLog.Infof("Profile server listening on %s", listenAddr)
-			profileRedirect := http.RedirectHandler("/debug/pprof",
-				http.StatusSeeOther)
-			http.Handle("/", profileRedirect)
-			bsvdLog.Errorf("%v", http.ListenAndServe(listenAddr, nil))
-		}()
-	}
+	// if cfg.Profile != "" {
+	// 	go func() {
+	// 		listenAddr := net.JoinHostPort("", cfg.Profile)
+	// 		bsvdLog.Infof("Profile server listening on %s", listenAddr)
+	// 		profileRedirect := http.RedirectHandler("/debug/pprof",
+	// 			http.StatusSeeOther)
+	// 		http.Handle("/", profileRedirect)
+	// 		bsvdLog.Errorf("%v", http.ListenAndServe(listenAddr, nil))
+	// 	}()
+	// }
 
 	// Write cpu profile if requested.
-	if cfg.CPUProfile != "" {
-		f, err := os.Create(cfg.CPUProfile)
-		if err != nil {
-			bsvdLog.Errorf("Unable to create cpu profile: %v", err)
-			return err
-		}
-		pprof.StartCPUProfile(f)
-		defer f.Close()
-		defer pprof.StopCPUProfile()
-	}
+	// if cfg.CPUProfile != "" {
+	// 	f, err := os.Create(cfg.CPUProfile)
+	// 	if err != nil {
+	// 		bsvdLog.Errorf("Unable to create cpu profile: %v", err)
+	// 		return err
+	// 	}
+	// 	pprof.StartCPUProfile(f)
+	// 	defer f.Close()
+	// 	defer pprof.StopCPUProfile()
+	// }
 
 	// Perform upgrades to bsvd as new versions require it.
-	if err := doUpgrades(); err != nil {
-		bsvdLog.Errorf("%v", err)
-		return err
-	}
+	// if err := doUpgrades(); err != nil {
+	// 	bsvdLog.Errorf("%v", err)
+	// 	return err
+	// }
 
 	// Return now if an interrupt signal was triggered.
 	if interruptRequested(interrupt) {
@@ -124,30 +120,30 @@ func bsvdMain(serverChan chan<- *server) error {
 	//
 	// NOTE: The order is important here because dropping the tx index also
 	// drops the address index since it relies on it.
-	if cfg.DropAddrIndex {
-		if err := indexers.DropAddrIndex(db, interrupt); err != nil {
-			bsvdLog.Errorf("%v", err)
-			return err
-		}
+	// if cfg.DropAddrIndex {
+	// 	if err := indexers.DropAddrIndex(db, interrupt); err != nil {
+	// 		bsvdLog.Errorf("%v", err)
+	// 		return err
+	// 	}
 
-		return nil
-	}
-	if cfg.DropTxIndex {
-		if err := indexers.DropTxIndex(db, interrupt); err != nil {
-			bsvdLog.Errorf("%v", err)
-			return err
-		}
+	// 	return nil
+	// }
+	// if cfg.DropTxIndex {
+	// 	if err := indexers.DropTxIndex(db, interrupt); err != nil {
+	// 		bsvdLog.Errorf("%v", err)
+	// 		return err
+	// 	}
 
-		return nil
-	}
-	if cfg.DropCfIndex {
-		if err := indexers.DropCfIndex(db, interrupt); err != nil {
-			bsvdLog.Errorf("%v", err)
-			return err
-		}
+	// 	return nil
+	// }
+	// if cfg.DropCfIndex {
+	// 	if err := indexers.DropCfIndex(db, interrupt); err != nil {
+	// 		bsvdLog.Errorf("%v", err)
+	// 		return err
+	// 	}
 
-		return nil
-	}
+	// 	return nil
+	// }
 
 	// Create server and start it.
 	server, err := newServer(cfg.Listeners, db, activeNetParams.Params,
