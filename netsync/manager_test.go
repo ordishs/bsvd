@@ -16,7 +16,6 @@ import (
 	"github.com/bitcoinsv/bsvd/chaincfg/chainhash"
 	"github.com/bitcoinsv/bsvd/database"
 	_ "github.com/bitcoinsv/bsvd/database/ffldb"
-	"github.com/bitcoinsv/bsvd/mempool"
 	"github.com/bitcoinsv/bsvd/netsync"
 	"github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/txscript"
@@ -82,28 +81,11 @@ func (ctx *testContext) Setup(config *testConfig) error {
 		return fmt.Errorf("failed to create blockchain: %v", err)
 	}
 
-	txMemPool := mempool.New(&mempool.Config{
-		Policy: mempool.Policy{
-			MaxTxVersion:    2,
-			MaxOrphanTxSize: 100,
-			MaxOrphanTxs:    1,
-		},
-		ChainParams:    ctx.cfg.chainParams,
-		FetchUtxoView:  chain.FetchUtxoView,
-		BestHeight:     func() int32 { return chain.BestSnapshot().Height },
-		MedianTimePast: func() time.Time { return chain.BestSnapshot().MedianTime },
-		CalcSequenceLock: func(tx *bsvutil.Tx, view *blockchain.UtxoViewpoint) (*blockchain.SequenceLock, error) {
-			return chain.CalcSequenceLock(tx, view, true)
-		},
-		IsDeploymentActive: chain.IsDeploymentActive,
-	})
-
 	peerNotifier := NewMockPeerNotifier()
 
 	syncMgr, err := netsync.New(&netsync.Config{
 		PeerNotifier: peerNotifier,
 		Chain:        chain,
-		TxMemPool:    txMemPool,
 		ChainParams:  ctx.cfg.chainParams,
 		MaxPeers:     8,
 	})

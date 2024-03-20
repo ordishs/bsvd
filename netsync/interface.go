@@ -8,7 +8,6 @@ import (
 	"github.com/bitcoinsv/bsvd/blockchain"
 	"github.com/bitcoinsv/bsvd/chaincfg"
 	"github.com/bitcoinsv/bsvd/chaincfg/chainhash"
-	"github.com/bitcoinsv/bsvd/mempool"
 	"github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/wire"
 	"github.com/bitcoinsv/bsvutil"
@@ -18,7 +17,7 @@ import (
 // transactions, blocks, etc. Currently server (in the main package) implements
 // this interface.
 type PeerNotifier interface {
-	AnnounceNewTransactions(newTxs []*mempool.TxDesc)
+	// AnnounceNewTransactions(newTxs []*mempool.TxDesc)
 
 	UpdatePeerHeights(latestBlkHash *chainhash.Hash, latestHeight int32, updateSource *peer.Peer)
 
@@ -31,13 +30,10 @@ type PeerNotifier interface {
 type Config struct {
 	PeerNotifier PeerNotifier
 	Chain        *blockchain.BlockChain
-	TxMemPool    *mempool.TxPool
 	ChainParams  *chaincfg.Params
 
 	DisableCheckpoints bool
 	MaxPeers           int
-
-	FeeEstimator *mempool.FeeEstimator
 
 	MinSyncPeerNetworkSpeed uint64
 }

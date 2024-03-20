@@ -13,7 +13,6 @@ import (
 
 	"github.com/bitcoinsv/bsvd/chaincfg"
 	"github.com/bitcoinsv/bsvd/chaincfg/chainhash"
-	"github.com/bitcoinsv/bsvd/mempool"
 	"github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/txscript"
 	"github.com/bitcoinsv/bsvd/wire"
@@ -159,15 +158,15 @@ func WaitUntil(fn func() bool, timeout time.Duration) bool {
 // Whenever one of the interface methods is called, the MockPeerNotifier puts
 // the call arguments in a channel for a receiver to make assertions about.
 type MockPeerNotifier struct {
-	announceNewTransactionsChan chan *announceNewTransactionsCall
-	updatePeerHeightsChan       chan *updatePeerHeightsCall
-	relayInventoryChan          chan *relayInventoryCall
-	transactionConfirmedChan    chan *transactionConfirmedCall
+	// announceNewTransactionsChan chan *announceNewTransactionsCall
+	updatePeerHeightsChan    chan *updatePeerHeightsCall
+	relayInventoryChan       chan *relayInventoryCall
+	transactionConfirmedChan chan *transactionConfirmedCall
 }
 
-type announceNewTransactionsCall struct {
-	newTxs []*mempool.TxDesc
-}
+// type announceNewTransactionsCall struct {
+// 	newTxs []*mempool.TxDesc
+// }
 
 type updatePeerHeightsCall struct {
 	latestBlkHash *chainhash.Hash
@@ -184,11 +183,11 @@ type transactionConfirmedCall struct {
 	tx *bsvutil.Tx
 }
 
-func (mock *MockPeerNotifier) AnnounceNewTransactions(newTxs []*mempool.TxDesc) {
-	mock.announceNewTransactionsChan <- &announceNewTransactionsCall{
-		newTxs: newTxs,
-	}
-}
+// func (mock *MockPeerNotifier) AnnounceNewTransactions(newTxs []*mempool.TxDesc) {
+// 	mock.announceNewTransactionsChan <- &announceNewTransactionsCall{
+// 		newTxs: newTxs,
+// 	}
+// }
 
 func (mock *MockPeerNotifier) UpdatePeerHeights(latestBlkHash *chainhash.Hash, latestHeight int32, updateSource *peer.Peer) {
 	mock.updatePeerHeightsChan <- &updatePeerHeightsCall{

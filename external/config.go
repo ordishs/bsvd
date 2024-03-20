@@ -26,7 +26,6 @@ import (
 	"github.com/bitcoinsv/bsvd/connmgr"
 	"github.com/bitcoinsv/bsvd/database"
 	_ "github.com/bitcoinsv/bsvd/database/ffldb"
-	"github.com/bitcoinsv/bsvd/mempool"
 	"github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/version"
 	"github.com/bitcoinsv/bsvutil"
@@ -415,12 +414,10 @@ func loadConfig() (*config, []string, error) {
 		LogDir:                  defaultLogDir,
 		DbType:                  defaultDbType,
 		ExcessiveBlockSize:      defaultExcessiveBlockSize,
-		MinRelayTxFee:           mempool.DefaultMinRelayTxFee.ToBSV(),
 		FreeTxRelayLimit:        defaultFreeTxRelayLimit,
 		TrickleInterval:         defaultTrickleInterval,
 		BlockMinSize:            defaultBlockMinSize,
 		BlockMaxSize:            defaultBlockMaxSize,
-		BlockPrioritySize:       mempool.DefaultBlockPrioritySize,
 		MaxOrphanTxs:            defaultMaxOrphanTransactions,
 		SigCacheMaxSize:         defaultSigCacheMaxSize,
 		UtxoCacheMaxSizeMiB:     defaultUtxoCacheMaxSizeMiB,

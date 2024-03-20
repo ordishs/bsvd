@@ -16,7 +16,6 @@ import (
 	"github.com/bitcoinsv/bsvd/chaincfg"
 	"github.com/bitcoinsv/bsvd/chaincfg/chainhash"
 	"github.com/bitcoinsv/bsvd/database"
-	"github.com/bitcoinsv/bsvd/mempool"
 	peerpkg "github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/wire"
 	"github.com/bitcoinsv/bsvutil"
@@ -205,7 +204,6 @@ type SyncManager struct {
 	started        int32
 	shutdown       int32
 	chain          *blockchain.BlockChain
-	txMemPool      *mempool.TxPool
 	chainParams    *chaincfg.Params
 	progressLogger *blockProgressLogger
 	msgChan        chan interface{}
@@ -225,9 +223,6 @@ type SyncManager struct {
 	headerList       *list.List
 	startHeader      *list.Element
 	nextCheckpoint   *chaincfg.Checkpoint
-
-	// An optional fee estimator.
-	feeEstimator *mempool.FeeEstimator
 
 	// minSyncPeerNetworkSpeed is the minimum speed allowed for
 	// a sync peer.
@@ -593,8 +588,9 @@ func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 
 	// Process the transaction to include validation, insertion in the
 	// memory pool, orphan handling, etc.
-	acceptedTxs, err := sm.txMemPool.ProcessTransaction(tmsg.tx,
-		true, true, mempool.Tag(peer.ID()))
+	// TODO: SAO - send to Teranode???
+	// acceptedTxs, err := sm.txMemPool.ProcessTransaction(tmsg.tx,
+	// 	true, true, mempool.Tag(peer.ID()))
 
 	// Remove transaction from request maps. Either the mempool/chain
 	// already knows about it and as such we shouldn't have any more
@@ -603,34 +599,35 @@ func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 	delete(state.requestedTxns, *txHash)
 	delete(sm.requestedTxns, *txHash)
 
-	if err != nil {
-		// Do not request this transaction again until a new block
-		// has been processed.
-		sm.rejectedTxns[*txHash] = struct{}{}
-		sm.limitMap(sm.rejectedTxns, maxRejectedTxns)
+	// if err != nil {
+	// 	// Do not request this transaction again until a new block
+	// 	// has been processed.
+	// 	sm.rejectedTxns[*txHash] = struct{}{}
+	// 	sm.limitMap(sm.rejectedTxns, maxRejectedTxns)
 
-		// When the error is a rule error, it means the transaction was
-		// simply rejected as opposed to something actually going wrong,
-		// so log it as such.  Otherwise, something really did go wrong,
-		// so log it as an actual error.
-		if _, ok := err.(mempool.RuleError); ok {
-			log.Debugf("Rejected transaction %v from %s: %v",
-				txHash, peer, err)
-		} else {
-			log.Errorf("Failed to process transaction %v: %v",
-				txHash, err)
-		}
+	// 	// When the error is a rule error, it means the transaction was
+	// 	// simply rejected as opposed to something actually going wrong,
+	// 	// so log it as such.  Otherwise, something really did go wrong,
+	// 	// so log it as an actual error.
+	// 	if _, ok := err.(mempool.RuleError); ok {
+	// 		log.Debugf("Rejected transaction %v from %s: %v",
+	// 			txHash, peer, err)
+	// 	} else {
+	// 		log.Errorf("Failed to process transaction %v: %v",
+	// 			txHash, err)
+	// 	}
 
-		// Convert the error into an appropriate reject message and
-		// send it.
-		code, reason := mempool.ErrToRejectErr(err)
-		peer.PushRejectMsg(wire.CmdTx, code, reason, txHash, false)
-		return
-	}
+	// 	// Convert the error into an appropriate reject message and
+	// 	// send it.
+	// 	code, reason := mempool.ErrToRejectErr(err)
+	// 	peer.PushRejectMsg(wire.CmdTx, code, reason, txHash, false)
+	// 	return
+	// }
 
-	if len(acceptedTxs) > 0 {
-		sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
-	}
+	// TODO: SAO -
+	// if len(acceptedTxs) > 0 {
+	// 	sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
+	// }
 }
 
 // current returns true if we believe we are synced with our peers, false if we
@@ -731,7 +728,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 		// Convert the error into an appropriate reject message and
 		// send it.
-		code, reason := mempool.ErrToRejectErr(err)
+		// TODO: SAO -
+		// code, reason := mempool.ErrToRejectErr(err)
+		var code wire.RejectCode
+		var reason string
+
 		peer.PushRejectMsg(wire.CmdBlock, code, reason, blockHash, false)
 		return
 	}
@@ -1046,9 +1047,9 @@ func (sm *SyncManager) haveInventory(invVect *wire.InvVect) (bool, error) {
 	case wire.InvTypeTx:
 		// Ask the transaction memory pool if the transaction is known
 		// to it in any form (main pool or orphan).
-		if sm.txMemPool.HaveTransaction(&invVect.Hash) {
-			return true, nil
-		}
+		// if sm.txMemPool.HaveTransaction(&invVect.Hash) {
+		// 	return true, nil
+		// }
 
 		// Check if the transaction exists from the point of view of the
 		// end of the main chain.  Note that this is only a best effort
@@ -1402,11 +1403,11 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 
 	// A block has been connected to the main block chain.
 	case blockchain.NTBlockConnected:
-		block, ok := notification.Data.(*bsvutil.Block)
-		if !ok {
-			log.Warnf("Chain connected notification is not a block.")
-			break
-		}
+		// block, ok := notification.Data.(*bsvutil.Block)
+		// if !ok {
+		// 	log.Warnf("Chain connected notification is not a block.")
+		// 	break
+		// }
 
 		// Remove all of the transactions (except the coinbase) in the
 		// connected block from the transaction pool.  Secondly, remove any
@@ -1415,54 +1416,54 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		// no longer an orphan. Transactions which depend on a confirmed
 		// transaction are NOT removed recursively because they are still
 		// valid.
-		for _, tx := range block.Transactions()[1:] {
-			sm.txMemPool.RemoveTransaction(tx, false)
-			sm.txMemPool.RemoveDoubleSpends(tx)
-			sm.txMemPool.RemoveOrphan(tx)
-			sm.peerNotifier.TransactionConfirmed(tx)
-			acceptedTxs := sm.txMemPool.ProcessOrphans(tx)
-			sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
-		}
+		// for _, tx := range block.Transactions()[1:] {
+		// 	sm.txMemPool.RemoveTransaction(tx, false)
+		// 	sm.txMemPool.RemoveDoubleSpends(tx)
+		// 	sm.txMemPool.RemoveOrphan(tx)
+		// 	sm.peerNotifier.TransactionConfirmed(tx)
+		// 	acceptedTxs := sm.txMemPool.ProcessOrphans(tx)
+		// 	sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
+		// }
 
-		// Register block with the fee estimator, if it exists.
-		if sm.feeEstimator != nil {
-			err := sm.feeEstimator.RegisterBlock(block)
+		// // Register block with the fee estimator, if it exists.
+		// if sm.feeEstimator != nil {
+		// 	err := sm.feeEstimator.RegisterBlock(block)
 
-			// If an error is somehow generated then the fee estimator
-			// has entered an invalid state. Since it doesn't know how
-			// to recover, create a new one.
-			if err != nil {
-				sm.feeEstimator = mempool.NewFeeEstimator(
-					mempool.DefaultEstimateFeeMaxRollback,
-					mempool.DefaultEstimateFeeMinRegisteredBlocks)
-			}
-		}
+		// 	// If an error is somehow generated then the fee estimator
+		// 	// has entered an invalid state. Since it doesn't know how
+		// 	// to recover, create a new one.
+		// 	if err != nil {
+		// 		sm.feeEstimator = mempool.NewFeeEstimator(
+		// 			mempool.DefaultEstimateFeeMaxRollback,
+		// 			mempool.DefaultEstimateFeeMinRegisteredBlocks)
+		// 	}
+		// }
 
 	// A block has been disconnected from the main block chain.
 	case blockchain.NTBlockDisconnected:
-		block, ok := notification.Data.(*bsvutil.Block)
-		if !ok {
-			log.Warnf("Chain disconnected notification is not a block.")
-			break
-		}
+		// block, ok := notification.Data.(*bsvutil.Block)
+		// if !ok {
+		// 	log.Warnf("Chain disconnected notification is not a block.")
+		// 	break
+		// }
 
 		// Reinsert all of the transactions (except the coinbase) into
 		// the transaction pool.
-		for _, tx := range block.Transactions()[1:] {
-			_, _, err := sm.txMemPool.MaybeAcceptTransaction(tx,
-				false, false)
-			if err != nil {
-				// Remove the transaction and all transactions
-				// that depend on it if it wasn't accepted into
-				// the transaction pool.
-				sm.txMemPool.RemoveTransaction(tx, true)
-			}
-		}
+		// 	for _, tx := range block.Transactions()[1:] {
+		// 		_, _, err := sm.txMemPool.MaybeAcceptTransaction(tx,
+		// 			false, false)
+		// 		if err != nil {
+		// 			// Remove the transaction and all transactions
+		// 			// that depend on it if it wasn't accepted into
+		// 			// the transaction pool.
+		// 			sm.txMemPool.RemoveTransaction(tx, true)
+		// 		}
+		// 	}
 
-		// Rollback previous block recorded by the fee estimator.
-		if sm.feeEstimator != nil {
-			sm.feeEstimator.Rollback(block.Hash())
-		}
+		// 	// Rollback previous block recorded by the fee estimator.
+		// 	if sm.feeEstimator != nil {
+		// 		sm.feeEstimator.Rollback(block.Hash())
+		// 	}
 	}
 }
 
@@ -1603,7 +1604,6 @@ func New(config *Config) (*SyncManager, error) {
 	sm := SyncManager{
 		peerNotifier:            config.PeerNotifier,
 		chain:                   config.Chain,
-		txMemPool:               config.TxMemPool,
 		chainParams:             config.ChainParams,
 		rejectedTxns:            make(map[chainhash.Hash]struct{}),
 		requestedTxns:           make(map[chainhash.Hash]struct{}),
@@ -1613,7 +1613,6 @@ func New(config *Config) (*SyncManager, error) {
 		msgChan:                 make(chan interface{}, config.MaxPeers*3),
 		headerList:              list.New(),
 		quit:                    make(chan struct{}),
-		feeEstimator:            config.FeeEstimator,
 		minSyncPeerNetworkSpeed: config.MinSyncPeerNetworkSpeed,
 	}
 

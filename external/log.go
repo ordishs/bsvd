@@ -15,9 +15,6 @@ import (
 	"github.com/bitcoinsv/bsvd/blockchain/indexers"
 	"github.com/bitcoinsv/bsvd/connmgr"
 	"github.com/bitcoinsv/bsvd/database"
-	"github.com/bitcoinsv/bsvd/mempool"
-	"github.com/bitcoinsv/bsvd/mining"
-	"github.com/bitcoinsv/bsvd/mining/cpuminer"
 	"github.com/bitcoinsv/bsvd/netsync"
 	"github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/txscript"
@@ -78,12 +75,9 @@ func init() {
 	database.UseLogger(bcdbLog)
 	blockchain.UseLogger(chanLog)
 	indexers.UseLogger(indxLog)
-	mining.UseLogger(minrLog)
-	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
 	txscript.UseLogger(scrpLog)
 	netsync.UseLogger(syncLog)
-	mempool.UseLogger(txmpLog)
 }
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.

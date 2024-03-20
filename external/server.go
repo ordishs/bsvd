@@ -28,9 +28,6 @@ import (
 	"github.com/bitcoinsv/bsvd/chaincfg/chainhash"
 	"github.com/bitcoinsv/bsvd/connmgr"
 	"github.com/bitcoinsv/bsvd/database"
-	"github.com/bitcoinsv/bsvd/mempool"
-	"github.com/bitcoinsv/bsvd/mining"
-	"github.com/bitcoinsv/bsvd/mining/cpuminer"
 	"github.com/bitcoinsv/bsvd/netsync"
 	"github.com/bitcoinsv/bsvd/peer"
 	"github.com/bitcoinsv/bsvd/txscript"
@@ -218,8 +215,6 @@ type server struct {
 	hashCache            *txscript.HashCache
 	syncManager          *netsync.SyncManager
 	chain                *blockchain.BlockChain
-	txMemPool            *mempool.TxPool
-	cpuMiner             *cpuminer.CPUMiner
 	modifyRebroadcastInv chan interface{}
 	newPeers             chan *serverPeer
 	donePeers            chan *serverPeer
@@ -242,10 +237,6 @@ type server struct {
 	txIndex   *indexers.TxIndex
 	addrIndex *indexers.AddrIndex
 	cfIndex   *indexers.CfIndex
-
-	// The fee estimator keeps track of how long transactions are left in
-	// the mempool before they are mined into blocks.
-	feeEstimator *mempool.FeeEstimator
 
 	// cfCheckptCaches stores a cached slice of filter headers for cfcheckpt
 	// messages for each filter type.
@@ -491,54 +482,6 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 	// Add valid peer to the server.
 	sp.server.AddPeer(sp)
 	return nil
-}
-
-// OnMemPool is invoked when a peer receives a mempool bitcoin message.
-// It creates and sends an inventory message with the contents of the memory
-// pool up to the maximum inventory allowed per message.  When the peer has a
-// bloom filter loaded, the contents are filtered accordingly.
-func (sp *serverPeer) OnMemPool(_ *peer.Peer, msg *wire.MsgMemPool) {
-	// Only allow mempool requests if the server has bloom filtering
-	// enabled.
-	if sp.server.services&wire.SFNodeBloom != wire.SFNodeBloom {
-		peerLog.Debugf("peer %v sent mempool request with bloom "+
-			"filtering disabled -- disconnecting", sp)
-		sp.Disconnect()
-		return
-	}
-
-	// A decaying ban score increase is applied to prevent flooding.
-	// The ban score accumulates and passes the ban threshold if a burst of
-	// mempool messages comes from a peer. The score decays each minute to
-	// half of its value.
-	sp.addBanScore(0, 33, "mempool")
-
-	// Generate inventory message with the available transactions in the
-	// transaction memory pool.  Limit it to the max allowed inventory
-	// per message.  The NewMsgInvSizeHint function automatically limits
-	// the passed hint to the maximum allowed, so it's safe to pass it
-	// without double checking it here.
-	txMemPool := sp.server.txMemPool
-	txDescs := txMemPool.TxDescs()
-	invMsg := wire.NewMsgInvSizeHint(uint(len(txDescs)))
-
-	for _, txDesc := range txDescs {
-		// Either add all transactions when there is no bloom filter,
-		// or only the transactions that match the filter when there is
-		// one.
-		if !sp.filter.IsLoaded() || sp.filter.MatchTxAndUpdate(txDesc.Tx) {
-			iv := wire.NewInvVect(wire.InvTypeTx, txDesc.Tx.Hash())
-			invMsg.AddInvVect(iv)
-			if len(invMsg.InvList)+1 > wire.MaxInvPerMsg {
-				break
-			}
-		}
-	}
-
-	// Send the inventory message if there is anything to send.
-	if len(invMsg.InvList) > 0 {
-		sp.QueueMessage(invMsg, nil)
-	}
 }
 
 // OnTx is invoked when a peer receives a tx bitcoin message.  It blocks
@@ -1388,22 +1331,22 @@ func (s *server) RemoveRebroadcastInventory(iv *wire.InvVect) {
 
 // relayTransactions generates and relays inventory vectors for all of the
 // passed transactions to all connected peers.
-func (s *server) relayTransactions(txns []*mempool.TxDesc) {
-	for _, txD := range txns {
-		iv := wire.NewInvVect(wire.InvTypeTx, txD.Tx.Hash())
-		s.RelayInventory(iv, txD)
-	}
-}
+// func (s *server) relayTransactions(txns []*mempool.TxDesc) {
+// 	for _, txD := range txns {
+// 		iv := wire.NewInvVect(wire.InvTypeTx, txD.Tx.Hash())
+// 		s.RelayInventory(iv, txD)
+// 	}
+// }
 
 // AnnounceNewTransactions generates and relays inventory vectors and notifies
 // both websocket and getblocktemplate long poll clients of the passed
 // transactions.  This function should be called whenever new transactions
 // are added to the mempool.
-func (s *server) AnnounceNewTransactions(txns []*mempool.TxDesc) {
-	// Generate and relay inventory vectors for all newly accepted
-	// transactions.
-	s.relayTransactions(txns)
-}
+// func (s *server) AnnounceNewTransactions(txns []*mempool.TxDesc) {
+// 	// Generate and relay inventory vectors for all newly accepted
+// 	// transactions.
+// 	// s.relayTransactions(txns)
+// }
 
 // Transaction has one confirmation on the main chain. Now we can mark it as no
 // longer needing rebroadcasting.
@@ -1419,23 +1362,23 @@ func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<-
 	// Attempt to fetch the requested transaction from the pool.  A
 	// call could be made to check for existence first, but simply trying
 	// to fetch a missing transaction results in the same behavior.
-	tx, err := s.txMemPool.FetchTransaction(hash)
-	if err != nil {
-		peerLog.Tracef("Unable to fetch tx %v from transaction "+
-			"pool: %v", hash, err)
+	// tx, err := s.txMemPool.FetchTransaction(hash)
+	// if err != nil {
+	// 	peerLog.Tracef("Unable to fetch tx %v from transaction "+
+	// 		"pool: %v", hash, err)
 
-		if doneChan != nil {
-			doneChan <- struct{}{}
-		}
-		return err
-	}
+	// 	if doneChan != nil {
+	// 		doneChan <- struct{}{}
+	// 	}
+	// 	return err
+	// }
 
 	// Once we have fetched data wait for any previous operation to finish.
-	if waitChan != nil {
-		<-waitChan
-	}
+	// // if waitChan != nil {
+	// // 	<-waitChan
+	// // }
 
-	sp.QueueMessageWithEncoding(tx.MsgTx(), doneChan, encoding)
+	// sp.QueueMessageWithEncoding(tx.MsgTx(), doneChan, encoding)
 
 	return nil
 }
@@ -1756,36 +1699,36 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 			return
 		}
 
-		if msg.invVect.Type == wire.InvTypeTx {
-			// Don't relay the transaction to the peer when it has
-			// transaction relaying disabled.
-			if sp.relayTxDisabled() {
-				return
-			}
+		// if msg.invVect.Type == wire.InvTypeTx {
+		// 	// Don't relay the transaction to the peer when it has
+		// 	// transaction relaying disabled.
+		// 	if sp.relayTxDisabled() {
+		// 		return
+		// 	}
 
-			txD, ok := msg.data.(*mempool.TxDesc)
-			if !ok {
-				peerLog.Warnf("Underlying data for tx inv "+
-					"relay is not a *mempool.TxDesc: %T",
-					msg.data)
-				return
-			}
+		// 	txD, ok := msg.data.(*mempool.TxDesc)
+		// 	if !ok {
+		// 		peerLog.Warnf("Underlying data for tx inv "+
+		// 			"relay is not a *mempool.TxDesc: %T",
+		// 			msg.data)
+		// 		return
+		// 	}
 
-			// Don't relay the transaction if the transaction fee-per-kb
-			// is less than the peer's feefilter.
-			feeFilter := atomic.LoadInt64(&sp.feeFilter)
-			if feeFilter > 0 && txD.FeePerKB < feeFilter {
-				return
-			}
+		// 	// Don't relay the transaction if the transaction fee-per-kb
+		// 	// is less than the peer's feefilter.
+		// 	feeFilter := atomic.LoadInt64(&sp.feeFilter)
+		// 	if feeFilter > 0 && txD.FeePerKB < feeFilter {
+		// 		return
+		// 	}
 
-			// Don't relay the transaction if there is a bloom
-			// filter loaded and the transaction doesn't match it.
-			if sp.filter.IsLoaded() {
-				if !sp.filter.MatchTxAndUpdate(txD.Tx) {
-					return
-				}
-			}
-		}
+		// 	// Don't relay the transaction if there is a bloom
+		// 	// filter loaded and the transaction doesn't match it.
+		// 	if sp.filter.IsLoaded() {
+		// 		if !sp.filter.MatchTxAndUpdate(txD.Tx) {
+		// 			return
+		// 		}
+		// 	}
+		// }
 
 		// Queue the inventory to be relayed with the next batch.
 		// It will be ignored if the peer is already known to
@@ -1986,7 +1929,6 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 	return &peer.Config{
 		Listeners: peer.MessageListeners{
 			OnVersion:      sp.OnVersion,
-			OnMemPool:      sp.OnMemPool,
 			OnTx:           sp.OnTx,
 			OnBlock:        sp.OnBlock,
 			OnInv:          sp.OnInv,
@@ -2066,12 +2008,12 @@ func (s *server) peerDoneHandler(sp *serverPeer) {
 		s.syncManager.DonePeer(sp.Peer, nil)
 
 		// Evict any remaining orphans that were sent by the peer.
-		numEvicted := s.txMemPool.RemoveOrphansByTag(mempool.Tag(sp.ID()))
-		if numEvicted > 0 {
-			txmpLog.Debugf("Evicted %d %s from peer %v (id %d)",
-				numEvicted, pickNoun(numEvicted, "orphan",
-					"orphans"), sp, sp.ID())
-		}
+		// numEvicted := s.txMemPool.RemoveOrphansByTag(mempool.Tag(sp.ID()))
+		// if numEvicted > 0 {
+		// 	txmpLog.Debugf("Evicted %d %s from peer %v (id %d)",
+		// 		numEvicted, pickNoun(numEvicted, "orphan",
+		// 			"orphans"), sp, sp.ID())
+		// }
 	}
 	close(sp.quit)
 }
@@ -2338,15 +2280,14 @@ func (s *server) Stop() error {
 	srvrLog.Warnf("Server shutting down")
 
 	// Stop the CPU miner if needed
-	s.cpuMiner.Stop()
 
 	// Save fee estimator state in the database.
-	s.db.Update(func(tx database.Tx) error {
-		metadata := tx.Metadata()
-		metadata.Put(mempool.EstimateFeeDatabaseKey, s.feeEstimator.Save())
+	// s.db.Update(func(tx database.Tx) error {
+	// 	// metadata := tx.Metadata()
+	// 	// metadata.Put(mempool.EstimateFeeDatabaseKey, s.feeEstimator.Save())
 
-		return nil
-	})
+	// 	return nil
+	// })
 
 	// Signal the remaining goroutines to quit.
 	close(s.quit)
@@ -2614,98 +2555,17 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 		return nil, err
 	}
 
-	// Search for a FeeEstimator state in the database. If none can be found
-	// or if it cannot be loaded, create a new one.
-	db.Update(func(tx database.Tx) error {
-		metadata := tx.Metadata()
-		feeEstimationData := metadata.Get(mempool.EstimateFeeDatabaseKey)
-		if feeEstimationData != nil {
-			// delete it from the database so that we don't try to restore the
-			// same thing again somehow.
-			metadata.Delete(mempool.EstimateFeeDatabaseKey)
-
-			// If there is an error, log it and make a new fee estimator.
-			var err error
-			s.feeEstimator, err = mempool.RestoreFeeEstimator(feeEstimationData)
-
-			if err != nil {
-				peerLog.Errorf("Failed to restore fee estimator %v", err)
-			}
-		}
-
-		return nil
-	})
-
-	// If no feeEstimator has been found, or if the one that has been found
-	// is behind somehow, create a new one and start over.
-	if s.feeEstimator == nil || s.feeEstimator.LastKnownHeight() != s.chain.BestSnapshot().Height {
-		s.feeEstimator = mempool.NewFeeEstimator(
-			mempool.DefaultEstimateFeeMaxRollback,
-			mempool.DefaultEstimateFeeMinRegisteredBlocks)
-	}
-
-	txC := mempool.Config{
-		Policy: mempool.Policy{
-			DisableRelayPriority: cfg.NoRelayPriority,
-			AcceptNonStd:         cfg.RelayNonStd,
-			FreeTxRelayLimit:     cfg.FreeTxRelayLimit,
-			MaxOrphanTxs:         cfg.MaxOrphanTxs,
-			MaxOrphanTxSize:      defaultMaxOrphanTxSize,
-			MaxSigOpPerTx:        blockchain.MaxTransactionSigOps,
-			MinRelayTxFee:        cfg.minRelayTxFee,
-			MaxTxVersion:         2,
-		},
-		ChainParams:    chainParams,
-		FetchUtxoView:  s.chain.FetchUtxoView,
-		BestHeight:     func() int32 { return s.chain.BestSnapshot().Height },
-		MedianTimePast: func() time.Time { return s.chain.BestSnapshot().MedianTime },
-		CalcSequenceLock: func(tx *bsvutil.Tx, view *blockchain.UtxoViewpoint) (*blockchain.SequenceLock, error) {
-			return s.chain.CalcSequenceLock(tx, view, true)
-		},
-		IsDeploymentActive: s.chain.IsDeploymentActive,
-		SigCache:           s.sigCache,
-		HashCache:          s.hashCache,
-		AddrIndex:          s.addrIndex,
-		FeeEstimator:       s.feeEstimator,
-	}
-	s.txMemPool = mempool.New(&txC)
-
 	s.syncManager, err = netsync.New(&netsync.Config{
 		PeerNotifier:            &s,
 		Chain:                   s.chain,
-		TxMemPool:               s.txMemPool,
 		ChainParams:             s.chainParams,
 		DisableCheckpoints:      cfg.DisableCheckpoints,
 		MaxPeers:                cfg.MaxPeers,
-		FeeEstimator:            s.feeEstimator,
 		MinSyncPeerNetworkSpeed: cfg.MinSyncPeerNetworkSpeed,
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	// Create the mining policy and block template generator based on the
-	// configuration options.
-	//
-	// NOTE: The CPU miner relies on the mempool, so the mempool has to be
-	// created before calling the function to create the CPU miner.
-	policy := mining.Policy{
-		BlockMinSize:      cfg.BlockMinSize,
-		BlockMaxSize:      cfg.BlockMaxSize,
-		BlockPrioritySize: cfg.BlockPrioritySize,
-		TxMinFreeFee:      cfg.minRelayTxFee,
-	}
-	blockTemplateGenerator := mining.NewBlkTmplGenerator(&policy,
-		s.chainParams, s.txMemPool, s.chain, s.timeSource,
-		s.sigCache, s.hashCache)
-	s.cpuMiner = cpuminer.New(&cpuminer.Config{
-		ChainParams:            chainParams,
-		BlockTemplateGenerator: blockTemplateGenerator,
-		MiningAddrs:            cfg.miningAddrs,
-		ProcessBlock:           s.syncManager.ProcessBlock,
-		ConnectedCount:         s.ConnectedCount,
-		IsCurrent:              s.syncManager.IsCurrent,
-	})
 
 	// Only setup a function to return new addresses to connect to when
 	// not running in connect-only mode.  The simulation network is always
